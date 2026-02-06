@@ -4,7 +4,7 @@
    <img src="assets/miDNI-backend.png" alt="miDNI-backend" width="180" height="180" />
 </p>
 
-Node.js (Express) backend to validate miDNI QR signatures with minimal Bearer token auth.
+Node.js (Express) backend to validate miDNI QR signatures with Bearer token auth, rate limiting and security headers.
 
 ## Requirements
 - Node.js >= 18
@@ -16,6 +16,8 @@ Node.js (Express) backend to validate miDNI QR signatures with minimal Bearer to
    ```
 2. Set `BEARER_TOKEN` to a long, random value.
 3. (Optional) Set `MAX_PAYLOAD_BYTES` to control the payload size limit (default: 65536).
+4. (Optional) Set `RATE_LIMIT_RPM` to control requests per minute per IP (default: 30).
+5. (Optional) Set `LOG_LEVEL` to control log verbosity: `trace`, `debug`, `info` (default), `warn`, `error`, `fatal`.
 
 ## Run
 ```bash
@@ -161,10 +163,24 @@ Responses and JSON examples:
 }
 ```
 
+#### 429 Too Many Requests (rate limit exceeded)
+```json
+{
+   "error": "too_many_requests"
+}
+```
+
 #### 500 Internal Server Error (server not configured)
 ```json
 {
    "error": "server_not_configured"
+}
+```
+
+#### 500 Internal Server Error (unexpected error)
+```json
+{
+   "error": "internal_error"
 }
 ```
 
