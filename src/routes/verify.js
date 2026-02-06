@@ -1,4 +1,5 @@
 const express = require("express");
+const logger = require("../logger");
 const { verifySignature } = require("../services/verifySignature");
 
 const router = express.Router();
@@ -46,14 +47,24 @@ router.post("/", async (req, res) => {
   const validationError = validatePayloadBytes(payloadBytes);
 
   if (validationError) {
+    logger.warn({ error: validationError }, "Payload validation failed");
     res.status(400).json({ error: validationError });
     return;
   }
 
-  const result = await verifySignature({
-    payloadBytes,
-  });
-  res.status(result.httpStatus || 200).json(result.body || result);
+  logger.info({ payloadSize: payloadBytes.length }, "Verify request received");
+
+  try {
+    const result = await verifySignature({
+      payloadBytes,
+    });
+
+    logger.info({ status: result.body?.status || "unknown", httpStatus: result.httpStatus }, "Verify result");
+    res.status(result.httpStatus || 200).json(result.body || result);
+  } catch (error) {
+    logger.error({ err: error }, "Unexpected error during verification");
+    res.status(500).json({ error: "internal_error" });
+  }
 });
 
 module.exports = router;

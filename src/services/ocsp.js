@@ -1,4 +1,5 @@
 const ocsp = require("ocsp");
+const logger = require("../logger");
 
 function checkOcspStatus(certificate, issuerCertificate, urlOverride) {
   return new Promise((resolve, reject) => {
@@ -10,6 +11,7 @@ function checkOcspStatus(certificate, issuerCertificate, urlOverride) {
       },
       (error, result) => {
         if (error) {
+          logger.error({ err: error }, "OCSP request error");
           reject(error);
           return;
         }

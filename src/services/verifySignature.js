@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const logger = require("../logger");
 const { parseQRPayload } = require("./qrParser");
 const { fetchCertificateBySerial } = require("./certProvider");
 const { loadCaCertificate, loadIntermediateCertificates, buildCertificateChain } = require("./trust");
@@ -9,6 +10,7 @@ async function verifySignature({ payloadBytes }) {
   const parsed = parseQRPayload(payload);
 
   if (!parsed.isValid || !parsed.header || !parsed.signatureRaw || !parsed.signedDataRange) {
+    logger.warn({ issues: parsed.issues }, "Payload structure is invalid");
     return buildResponse(400, {
       status: "invalid_structure",
       verified: false,
@@ -20,8 +22,10 @@ async function verifySignature({ payloadBytes }) {
   const certRef = parsed.header.certReferenceHex;
   let certResult;
   try {
+    logger.info({ certRef }, "Fetching signing certificate");
     certResult = await fetchCertificateBySerial(certRef);
   } catch (error) {
+    logger.error({ err: error, certRef }, "Certificate fetch failed");
     return buildResponse(502, {
       status: "certificate_fetch_failed",
       verified: false,
@@ -34,6 +38,7 @@ async function verifySignature({ payloadBytes }) {
 
   const certValidation = validateCertificateDates(certResult.certificate, validationMode);
   if (!certValidation.isValid) {
+    logger.warn({ reason: certValidation.reason, validationMode }, "Certificate dates invalid");
     return buildResponse(400, {
       status: "invalid_certificate",
       verified: false,
@@ -43,8 +48,10 @@ async function verifySignature({ payloadBytes }) {
   }
 
   if (validationMode === "full") {
+    logger.info("Running full certificate validation (CA + OCSP)");
     const caCertificate = loadCaCertificate();
     if (!caCertificate) {
+      logger.error("CA certificate not configured for full validation");
       return buildResponse(500, {
         status: "ca_not_configured",
         verified: false,
@@ -56,6 +63,7 @@ async function verifySignature({ payloadBytes }) {
     const intermediates = loadIntermediateCertificates();
     const chainResult = buildCertificateChain(certResult.certificate, caCertificate, intermediates);
     if (!chainResult.isValid || !chainResult.issuer) {
+      logger.warn({ reason: chainResult.reason }, "Certificate chain validation failed");
       return buildResponse(400, {
         status: "invalid_certificate",
         verified: false,
@@ -66,8 +74,11 @@ async function verifySignature({ payloadBytes }) {
 
     const ocspUrl = process.env.OCSP_URL || "http://ocsp.policia.es";
     try {
+      logger.info({ ocspUrl }, "Checking OCSP status");
       const ocspResult = await checkOcspStatus(certResult.certificate, chainResult.issuer, ocspUrl);
+      logger.info({ ocspStatus: ocspResult.status }, "OCSP check completed");
       if (ocspResult.status === "revoked") {
+        logger.warn({ revokedAt: ocspResult.revokedAt }, "Certificate is revoked");
         return buildResponse(400, {
           status: "invalid_certificate",
           verified: false,
@@ -87,6 +98,7 @@ async function verifySignature({ payloadBytes }) {
         });
       }
     } catch (error) {
+      logger.error({ err: error, ocspUrl }, "OCSP check failed");
       return buildResponse(502, {
         status: "ocsp_failed",
         verified: false,
@@ -113,6 +125,7 @@ async function verifySignature({ payloadBytes }) {
 
   const signatureOk = verifier.verify(certResult.certificate.publicKey, signatureDer);
   if (!signatureOk) {
+    logger.warn("ECDSA signature verification failed");
     return buildResponse(400, {
       status: "invalid_signature",
       verified: false,
@@ -132,6 +145,7 @@ async function verifySignature({ payloadBytes }) {
     });
   }
 
+  logger.info({ dataExpiry: expiryCheck.dataExpiry }, "Signature verified successfully");
   return buildResponse(200, {
     status: "ok",
     verified: true,

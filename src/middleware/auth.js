@@ -1,6 +1,9 @@
+const logger = require("../logger");
+
 function authMiddleware(req, res, next) {
   const expectedToken = process.env.BEARER_TOKEN;
   if (!expectedToken) {
+    logger.error("BEARER_TOKEN is not configured");
     res.status(500).json({ error: "server_not_configured" });
     return;
   }
@@ -9,11 +12,13 @@ function authMiddleware(req, res, next) {
   const [scheme, token] = authHeader.split(" ");
 
   if (!authHeader || scheme !== "Bearer" || !token) {
+    logger.warn({ ip: req.ip }, "Request with missing bearer token");
     res.status(401).json({ error: "missing_bearer_token" });
     return;
   }
 
   if (token !== expectedToken) {
+    logger.warn({ ip: req.ip }, "Request with invalid bearer token");
     res.status(403).json({ error: "invalid_bearer_token" });
     return;
   }

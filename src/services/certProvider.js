@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const logger = require("../logger");
 
 const DEFAULT_CERT_BASE_URL = "http://pki.policia.es/cnp/MiDNI";
 const DEFAULT_CERT_FILE = "APPDNIMOVIL.cer";
@@ -20,26 +21,33 @@ async function fetchCertificateBySerial(serialHex) {
   candidates.push(baseUrl);
 
   for (const url of candidates) {
+    logger.debug({ url, serial: normalizedSerial }, "Trying certificate URL");
     const result = await tryFetchCertificate(url, normalizedSerial);
     if (result) {
+      logger.info({ url, serial: normalizedSerial }, "Certificate found");
       return result;
     }
   }
 
+  logger.debug({ baseUrl }, "Fetching certificate index page");
   const indexResponse = await fetchUrl(baseUrl);
   if (!indexResponse.ok) {
+    logger.error({ baseUrl, status: indexResponse.status }, "Certificate index fetch failed");
     throw new Error(`Certificate list request failed with ${indexResponse.status}`);
   }
 
   const indexBuffer = Buffer.from(await indexResponse.arrayBuffer());
   const htmlLinks = extractCertificateLinks(indexBuffer, baseUrl);
   for (const link of htmlLinks) {
+    logger.debug({ url: link }, "Trying certificate link from index");
     const result = await tryFetchCertificate(link, normalizedSerial);
     if (result) {
+      logger.info({ url: link, serial: normalizedSerial }, "Certificate found via index");
       return result;
     }
   }
 
+  logger.error({ serial: serialHex }, "Certificate not found after exhausting all sources");
   throw new Error("Certificate with provided reference not found");
 }
 

@@ -1,22 +1,26 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const logger = require("../logger");
 
 function loadCaCertificate() {
   const pem = process.env.CA_CERT_PEM;
   if (pem && pem.trim()) {
+    logger.debug("Loading CA certificate from CA_CERT_PEM");
     const certs = parsePemBundle(pem);
     return certs[0] || null;
   }
 
   const certPath = process.env.CA_CERT_PATH;
   if (certPath && certPath.trim()) {
+    logger.debug({ certPath }, "Loading CA certificate from file");
     const resolved = path.resolve(certPath);
     const data = fs.readFileSync(resolved, "utf8");
     const certs = parsePemBundle(data);
     return certs[0] || null;
   }
 
+  logger.debug("No CA certificate configured");
   return null;
 }
 
@@ -51,8 +55,10 @@ function verifyCertificateSignature(certificate, issuerCertificate) {
 
 function buildCertificateChain(leafCertificate, caCertificate, intermediates) {
   if (!caCertificate) {
+    logger.warn("Cannot build certificate chain: CA not configured");
     return { isValid: false, reason: "CA certificate is not configured" };
   }
+  logger.debug({ intermediatesCount: Array.isArray(intermediates) ? intermediates.length : 0 }, "Building certificate chain");
 
   const allIntermediates = Array.isArray(intermediates) ? intermediates : [];
   const chain = [];
