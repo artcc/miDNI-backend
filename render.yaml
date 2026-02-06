@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: midni-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: BEARER_TOKEN
+        sync: false
+      - key: CERT_BASE_URL
+        value: http://pki.policia.es/cnp/MiDNI
+      - key: CERT_FILE
+        value: APPDNIMOVIL.cer
