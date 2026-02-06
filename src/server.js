@@ -1,4 +1,6 @@
 const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const pinoHttp = require("pino-http");
 const logger = require("./logger");
 const authMiddleware = require("./middleware/auth");
@@ -7,13 +9,26 @@ const verifyRouter = require("./routes/verify");
 const app = express();
 
 app.disable("x-powered-by");
+app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
 app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/health" } }));
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: Number(process.env.RATE_LIMIT_RPM) || 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn({ ip: req.ip }, "Rate limit exceeded");
+    res.status(429).json({ error: "too_many_requests" });
+  },
+});
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.use(limiter);
 app.use(authMiddleware);
 app.use("/verify", verifyRouter);
 

@@ -1,4 +1,14 @@
+const crypto = require("crypto");
 const logger = require("../logger");
+
+function safeEqual(a, b) {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) {
+    return crypto.timingSafeEqual(bufA, Buffer.alloc(bufA.length)) && false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function authMiddleware(req, res, next) {
   const expectedToken = process.env.BEARER_TOKEN;
@@ -17,7 +27,7 @@ function authMiddleware(req, res, next) {
     return;
   }
 
-  if (token !== expectedToken) {
+  if (!safeEqual(token, expectedToken)) {
     logger.warn({ ip: req.ip }, "Request with invalid bearer token");
     res.status(403).json({ error: "invalid_bearer_token" });
     return;
