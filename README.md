@@ -1,8 +1,8 @@
-<p align="center">
+# miDNI-backend
+
+<p align="left">
    <img src="assets/miDNI-backend.png" alt="miDNI-backend" width="180" height="180" />
 </p>
-
-# miDNI-backend
 
 Node.js (Express) backend to validate miDNI QR signatures with minimal Bearer token auth.
 
