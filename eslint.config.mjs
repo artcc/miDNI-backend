@@ -16,6 +16,7 @@ export default [
       "no-console": "off",
       eqeqeq: "error",
       curly: ["error", "multi-line"],
+      semi: ["error", "never"],
       "no-throw-literal": "error",
       "prefer-const": "error",
       "no-var": "error",

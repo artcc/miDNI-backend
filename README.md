@@ -18,6 +18,7 @@ Node.js (Express) backend to validate miDNI QR signatures with Bearer token auth
 3. (Optional) Set `MAX_PAYLOAD_BYTES` to control the payload size limit (default: 65536).
 4. (Optional) Set `RATE_LIMIT_RPM` to control requests per minute per IP (default: 30).
 5. (Optional) Set `LOG_LEVEL` to control log verbosity: `trace`, `debug`, `info` (default), `warn`, `error`, `fatal`.
+6. (Optional) Set `INCLUDE_THUMBNAIL_BASE64=false` to disable the photo field (default: true).
 
 ## Run
 ```bash
@@ -44,7 +45,7 @@ Authorization: Bearer <token>
 JSON body:
 ```json
 {
-   "payloadBytes": [64, 4, 125, 192, 55, 88, 23, 89]
+   "payloadBytes": [64, 4, 125, 192, 55, 88, 23, 89...]
 }
 ```
 

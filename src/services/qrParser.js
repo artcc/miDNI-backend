@@ -1,18 +1,33 @@
-const MAGIC_BYTE = 0xDC;
-const VERSION_BYTE = 0x03;
-const SIGNATURE_TLV_TAG = 0xFF;
-const EXPIRY_TLV_TAG = 0x80;
+const MAGIC_BYTE = 0xDC
+const VERSION_BYTE = 0x03
+const SIGNATURE_TLV_TAG = 0xFF
+const EXPIRY_TLV_TAG = 0x80
 
+/**
+ * Parse a VDS payload into header, TLVs, signature, and normalized fields.
+ * @param {Buffer} payload
+ * @returns {{
+ *   header: object|null,
+ *   signatureRaw: Buffer|null,
+ *   signedDataRange: {start: number, end: number}|null,
+ *   dataExpiryText: string|null,
+ *   bodyTlvs: Array,
+ *   knownFields: Array,
+ *   data: object,
+ *   issues: Array,
+ *   isValid: boolean,
+ * }}
+ */
 function parseQRPayload(payload) {
-  const issues = [];
-  let isValid = true;
-  let cursor = 0;
-  let header = null;
-  let signatureRaw = null;
-  let signedDataRange = null;
-  let dataExpiryText = null;
-  const bodyTlvs = [];
-  const knownFields = [];
+  const issues = []
+  let isValid = true
+  let cursor = 0
+  let header = null
+  let signatureRaw = null
+  let signedDataRange = null
+  let dataExpiryText = null
+  const bodyTlvs = []
+  const knownFields = []
   const data = {
     documentNumber: null,
     birthDate: null,
@@ -29,58 +44,58 @@ function parseQRPayload(payload) {
     addressLines: [],
     placeOfBirthLines: [],
     thumbnailBase64: null,
-  };
+  }
 
   function addIssue(severity, message, offset) {
     if (severity === "error") {
-      isValid = false;
+      isValid = false
     }
-    issues.push({ severity, message, offset });
+    issues.push({ severity, message, offset })
   }
 
   if (!Buffer.isBuffer(payload)) {
-    addIssue("error", "Payload must be a Buffer", cursor);
-    return buildResult();
+    addIssue("error", "Payload must be a Buffer", cursor)
+    return buildResult()
   }
 
   if (payload.length < 4) {
-    addIssue("error", "Payload too short for header", cursor);
-    return buildResult();
+    addIssue("error", "Payload too short for header", cursor)
+    return buildResult()
   }
 
-  const magic = payload[0];
-  const version = payload[1];
+  const magic = payload[0]
+  const version = payload[1]
   if (magic !== MAGIC_BYTE) {
-    addIssue("error", "Invalid magic byte (0xDC expected)", 0);
+    addIssue("error", "Invalid magic byte (0xDC expected)", 0)
   }
   if (version !== VERSION_BYTE) {
-    addIssue("error", "Invalid version byte (0x03 expected)", 1);
+    addIssue("error", "Invalid version byte (0x03 expected)", 1)
   }
 
-  const issuerCountryC40 = payload.subarray(2, 4);
-  const issuerCountry = decodeC40String(issuerCountryC40, 2, issues);
+  const issuerCountryC40 = payload.subarray(2, 4)
+  const issuerCountry = decodeC40String(issuerCountryC40, 2, issues)
   if (issuerCountry && issuerCountry !== "ES") {
-    addIssue("warning", `Unexpected issuer country: ${issuerCountry}`, 2);
+    addIssue("warning", `Unexpected issuer country: ${issuerCountry}`, 2)
   }
 
-  cursor = 4;
+  cursor = 4
 
-  const signerParse = parseSignerField(payload, cursor, issues);
+  const signerParse = parseSignerField(payload, cursor, issues)
   if (signerParse) {
-    cursor += signerParse.bytesConsumed;
+    cursor += signerParse.bytesConsumed
 
-    const fixedHeaderBytes = 8;
+    const fixedHeaderBytes = 8
     if (cursor + fixedHeaderBytes > payload.length) {
-      addIssue("error", "Header truncated after signer identifier", cursor);
+      addIssue("error", "Header truncated after signer identifier", cursor)
     } else {
-      const issueDateRaw = payload.subarray(cursor, cursor + 3);
-      cursor += 3;
-      const signatureDateRaw = payload.subarray(cursor, cursor + 3);
-      cursor += 3;
-      const profile = payload[cursor];
-      cursor += 1;
-      const documentCategory = payload[cursor];
-      cursor += 1;
+      const issueDateRaw = payload.subarray(cursor, cursor + 3)
+      cursor += 3
+      const signatureDateRaw = payload.subarray(cursor, cursor + 3)
+      cursor += 3
+      const profile = payload[cursor]
+      cursor += 1
+      const documentCategory = payload[cursor]
+      cursor += 1
 
       header = {
         magic,
@@ -92,73 +107,73 @@ function parseQRPayload(payload) {
         signatureDateRaw,
         profile,
         documentCategory,
-      };
+      }
     }
   } else {
-    const fallback = parseHeaderFallback(payload, cursor, issues);
+    const fallback = parseHeaderFallback(payload, cursor, issues)
     if (fallback) {
-      addIssue("warning", "Header reconstructed using fallback heuristic", fallback.profileOffset);
-      header = fallback.header;
-      cursor = fallback.tlvStartOffset;
+      addIssue("warning", "Header reconstructed using fallback heuristic", fallback.profileOffset)
+      header = fallback.header
+      cursor = fallback.tlvStartOffset
     } else {
-      addIssue("error", "Signer identifier could not be parsed", cursor);
-      const tlvStart = findTLVStart(payload, cursor);
+      addIssue("error", "Signer identifier could not be parsed", cursor)
+      const tlvStart = findTLVStart(payload, cursor)
       if (tlvStart !== null) {
-        addIssue("warning", `TLV start found by heuristic at offset ${tlvStart}`, tlvStart);
-        cursor = tlvStart;
+        addIssue("warning", `TLV start found by heuristic at offset ${tlvStart}`, tlvStart)
+        cursor = tlvStart
       }
     }
   }
 
   while (cursor < payload.length) {
-    const tagOffset = cursor;
-    const tag = payload[cursor];
-    cursor += 1;
+    const tagOffset = cursor
+    const tag = payload[cursor]
+    cursor += 1
 
-    const length = parseTLVLength(payload, { cursorRef: () => cursor, setCursor: (v) => { cursor = v; } }, issues);
+    const length = parseTLVLength(payload, { cursorRef: () => cursor, setCursor: (v) => { cursor = v } }, issues)
     if (length === null) {
-      addIssue("error", "Invalid TLV length", cursor);
-      break;
+      addIssue("error", "Invalid TLV length", cursor)
+      break
     }
 
-    const valueStart = cursor;
-    const valueEnd = cursor + length;
+    const valueStart = cursor
+    const valueEnd = cursor + length
     if (valueEnd > payload.length) {
-      addIssue("error", `Truncated TLV for tag 0x${tag.toString(16).padStart(2, "0").toUpperCase()}`, tagOffset);
-      break;
+      addIssue("error", `Truncated TLV for tag 0x${tag.toString(16).padStart(2, "0").toUpperCase()}`, tagOffset)
+      break
     }
 
-    const value = payload.subarray(valueStart, valueEnd);
-    cursor = valueEnd;
+    const value = payload.subarray(valueStart, valueEnd)
+    cursor = valueEnd
 
     if (tag === SIGNATURE_TLV_TAG) {
-      signatureRaw = value;
-      signedDataRange = { start: 0, end: tagOffset };
+      signatureRaw = value
+      signedDataRange = { start: 0, end: tagOffset }
       if (cursor !== payload.length) {
-        addIssue("warning", "Trailing bytes found after signature TLV", cursor);
+        addIssue("warning", "Trailing bytes found after signature TLV", cursor)
       }
-      break;
+      break
     }
 
-    const tlv = { tag, length, value, offset: tagOffset };
-    bodyTlvs.push(tlv);
+    const tlv = { tag, length, value, offset: tagOffset }
+    bodyTlvs.push(tlv)
 
     if (tag === EXPIRY_TLV_TAG) {
-      dataExpiryText = value.toString("latin1");
+      dataExpiryText = value.toString("latin1")
     }
 
-    const field = decodeKnownField(tag, value);
+    const field = decodeKnownField(tag, value)
     if (field) {
-      knownFields.push(field);
-      applyFieldToData(data, field);
+      knownFields.push(field)
+      applyFieldToData(data, field)
     }
   }
 
   if (!signatureRaw) {
-    addIssue("error", "Signature TLV (0xFF) not found", cursor);
+    addIssue("error", "Signature TLV (0xFF) not found", cursor)
   }
 
-  return buildResult();
+  return buildResult()
 
   function buildResult() {
     return {
@@ -171,108 +186,122 @@ function parseQRPayload(payload) {
       data,
       issues,
       isValid,
-    };
+    }
   }
 }
 
+/**
+ * Parse TLV length in short or long form.
+ * @param {Buffer} payload
+ * @param {{ cursorRef: () => number, setCursor: (v: number) => void }} cursorManager
+ * @param {Array} issues
+ * @returns {number|null}
+ */
 function parseTLVLength(payload, cursorManager, issues) {
-  let cursor = cursorManager.cursorRef();
+  let cursor = cursorManager.cursorRef()
   if (cursor >= payload.length) {
-    return null;
+    return null
   }
 
-  const first = payload[cursor];
-  cursor += 1;
+  const first = payload[cursor]
+  cursor += 1
 
   if (first < 0x80) {
-    cursorManager.setCursor(cursor);
-    return first;
+    cursorManager.setCursor(cursor)
+    return first
   }
 
-  const lengthBytes = first & 0x7F;
+  const lengthBytes = first & 0x7F
   if (lengthBytes === 0 || lengthBytes > 4) {
-    issues.push({ severity: "error", message: "Invalid TLV length byte count", offset: cursor - 1 });
-    cursorManager.setCursor(cursor);
-    return null;
+    issues.push({ severity: "error", message: "Invalid TLV length byte count", offset: cursor - 1 })
+    cursorManager.setCursor(cursor)
+    return null
   }
 
   if (cursor + lengthBytes > payload.length) {
-    issues.push({ severity: "error", message: "Truncated TLV length", offset: cursor });
-    cursorManager.setCursor(cursor);
-    return null;
+    issues.push({ severity: "error", message: "Truncated TLV length", offset: cursor })
+    cursorManager.setCursor(cursor)
+    return null
   }
 
-  let length = 0;
+  let length = 0
   for (let i = 0; i < lengthBytes; i += 1) {
-    length = (length << 8) | payload[cursor];
-    cursor += 1;
+    length = (length << 8) | payload[cursor]
+    cursor += 1
   }
 
-  cursorManager.setCursor(cursor);
-  return length;
+  cursorManager.setCursor(cursor)
+  return length
 }
 
+/**
+ * Parse the C40-encoded signer identifier and certificate reference.
+ * @param {Buffer} payload
+ * @param {number} offset
+ * @param {Array} issues
+ * @returns {{ signerCountry: string, signerEntity: string, certReferenceHex: string, bytesConsumed: number }|null}
+ */
 function parseSignerField(payload, offset, issues) {
-  let cursor = offset;
-  let decodedBytes = [];
-  let requiredChars = null;
-  let shiftState = "none";
-  let pairsConsumed = 0;
-  let targetPairs = null;
+  let cursor = offset
+  let decodedBytes = []
+  let requiredChars = null
+  let shiftState = "none"
+  let pairsConsumed = 0
+  let targetPairs = null
 
   while (cursor + 1 < payload.length) {
-    const pairStart = cursor;
-    const value = payload[cursor] * 256 + payload[cursor + 1];
-    cursor += 2;
-    pairsConsumed += 1;
+    const pairStart = cursor
+    const value = payload[cursor] * 256 + payload[cursor + 1]
+    cursor += 2
+    pairsConsumed += 1
 
-    const c1 = Math.floor((value - 1) / 1600);
-    const c2 = Math.floor(((value - 1) % 1600) / 40);
-    const c3 = (value - 1) % 40;
+    const c1 = Math.floor((value - 1) / 1600)
+    const c2 = Math.floor(((value - 1) % 1600) / 40)
+    const c3 = (value - 1) % 40
 
-    decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c1, issues, () => shiftState, (v) => { shiftState = v; }));
-    decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c2, issues, () => shiftState, (v) => { shiftState = v; }));
-    decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c3, issues, () => shiftState, (v) => { shiftState = v; }));
+    decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c1, issues, () => shiftState, (v) => { shiftState = v }))
+    decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c2, issues, () => shiftState, (v) => { shiftState = v }))
+    decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c3, issues, () => shiftState, (v) => { shiftState = v }))
 
     if (requiredChars === null && decodedBytes.length >= 6) {
-      const lengthHexBytes = decodedBytes.slice(4, 6);
-      const lengthHex = Buffer.from(lengthHexBytes).toString("ascii");
-      const certLength = Number.parseInt(lengthHex, 16);
+      const lengthHexBytes = decodedBytes.slice(4, 6)
+      const lengthHex = Buffer.from(lengthHexBytes).toString("ascii")
+      const certLength = Number.parseInt(lengthHex, 16)
       if (Number.isNaN(certLength)) {
-        issues.push({ severity: "error", message: "Invalid certificate length hex", offset: pairStart });
-        return null;
+        issues.push({ severity: "error", message: "Invalid certificate length hex", offset: pairStart })
+        return null
       }
-      requiredChars = 2 + 2 + 2 + certLength * 2;
-      const neededBytes = bytesForC40Chars(requiredChars);
-      targetPairs = neededBytes / 2;
+      requiredChars = 2 + 2 + 2 + certLength * 2
+      const neededBytes = bytesForC40Chars(requiredChars)
+      targetPairs = neededBytes / 2
     }
 
     if (requiredChars !== null && targetPairs !== null && pairsConsumed >= targetPairs) {
       if (decodedBytes.length < requiredChars) {
-        issues.push({ severity: "error", message: "Signer identifier truncated (C40)", offset });
-        return null;
+        issues.push({ severity: "error", message: "Signer identifier truncated (C40)", offset })
+        return null
       }
       if (decodedBytes.length > requiredChars) {
-        decodedBytes = decodedBytes.slice(0, requiredChars);
+        decodedBytes = decodedBytes.slice(0, requiredChars)
       }
 
-      const bytesConsumed = targetPairs * 2;
+      const bytesConsumed = targetPairs * 2
       if (bytesConsumed > payload.length - offset) {
-        issues.push({ severity: "error", message: "Signer identifier truncated", offset });
-        return null;
+        issues.push({ severity: "error", message: "Signer identifier truncated", offset })
+        return null
       }
 
       if (requiredChars < 6) {
-        issues.push({ severity: "error", message: "Signer identifier too short", offset });
-        return null;
+        issues.push({ severity: "error", message: "Signer identifier too short", offset })
+        return null
       }
 
-      const signerCountry = Buffer.from(decodedBytes.slice(0, 2)).toString("ascii");
-      const signerEntity = Buffer.from(decodedBytes.slice(2, 4)).toString("ascii");
-      const certReferenceHex = Buffer.from(decodedBytes.slice(6, requiredChars)).toString("ascii");
+      const signerCountry = Buffer.from(decodedBytes.slice(0, 2)).toString("ascii")
+      const signerEntity = Buffer.from(decodedBytes.slice(2, 4)).toString("ascii")
+      const certReferenceHex = Buffer.from(decodedBytes.slice(6, requiredChars)).toString("ascii")
 
       if (!/^[0-9A-F]+$/.test(certReferenceHex)) {
-        issues.push({ severity: "warning", message: "Certificate reference does not look like hex", offset });
+        issues.push({ severity: "warning", message: "Certificate reference does not look like hex", offset })
       }
 
       return {
@@ -280,76 +309,101 @@ function parseSignerField(payload, offset, issues) {
         signerEntity,
         certReferenceHex,
         bytesConsumed,
-      };
+      }
     }
   }
 
-  issues.push({ severity: "error", message: "Signer identifier incomplete", offset });
-  return null;
+  issues.push({ severity: "error", message: "Signer identifier incomplete", offset })
+  return null
 }
 
+/**
+ * Compute byte length for a given number of C40 characters.
+ * @param {number} count
+ * @returns {number}
+ */
 function bytesForC40Chars(count) {
-  return Math.floor((count + 2) / 3) * 2;
+  return Math.floor((count + 2) / 3) * 2
 }
 
+/**
+ * Decode a C40 byte sequence into a string.
+ * @param {Buffer} bytes
+ * @param {number} maxChars
+ * @param {Array} issues
+ * @returns {string}
+ */
 function decodeC40String(bytes, maxChars, issues) {
-  const values = c40Values(bytes);
-  let decoded = "";
-  let shiftState = "none";
+  const values = c40Values(bytes)
+  let decoded = ""
+  let shiftState = "none"
 
   for (const value of values) {
-    decoded += decodeC40Value(value, issues, () => shiftState, (v) => { shiftState = v; });
+    decoded += decodeC40Value(value, issues, () => shiftState, (v) => { shiftState = v })
     if (maxChars && decoded.length >= maxChars) {
-      break;
+      break
     }
   }
 
   if (maxChars && decoded.length > maxChars) {
-    decoded = decoded.slice(0, maxChars);
+    decoded = decoded.slice(0, maxChars)
   }
 
-  return decoded;
+  return decoded
 }
 
+/**
+ * Expand C40 bytes into value triplets.
+ * @param {Buffer} bytes
+ * @returns {number[]}
+ */
 function c40Values(bytes) {
-  const buffer = Array.from(bytes);
-  const values = [];
-  let index = 0;
+  const buffer = Array.from(bytes)
+  const values = []
+  let index = 0
 
   while (index + 1 < buffer.length) {
-    const v = buffer[index] * 256 + buffer[index + 1];
-    const temp = v - 1;
-    const c1 = Math.floor(temp / 1600);
-    const c2 = Math.floor((temp % 1600) / 40);
-    const c3 = temp % 40;
-    values.push(c1, c2, c3);
-    index += 2;
+    const v = buffer[index] * 256 + buffer[index + 1]
+    const temp = v - 1
+    const c1 = Math.floor(temp / 1600)
+    const c2 = Math.floor((temp % 1600) / 40)
+    const c3 = temp % 40
+    values.push(c1, c2, c3)
+    index += 2
   }
 
-  return values;
+  return values
 }
 
+/**
+ * Decode a single C40 value with shift-state handling.
+ * @param {number} value
+ * @param {Array} issues
+ * @param {() => string} getShift
+ * @param {(v: string) => void} setShift
+ * @returns {string}
+ */
 function decodeC40Value(value, issues, getShift, setShift) {
-  const shiftState = getShift();
+  const shiftState = getShift()
 
   if (shiftState === "none") {
-    if (value === 0) { setShift("shift1"); return ""; }
-    if (value === 1) { setShift("shift2"); return ""; }
-    if (value === 2) { setShift("shift3"); return ""; }
-    if (value === 3) { return " "; }
-    if (value >= 4 && value <= 13) { return String(value - 4); }
-    if (value >= 14 && value <= 39) { return String.fromCharCode(65 + value - 14); }
-    issues.push({ severity: "warning", message: "C40 value out of range", offset: null });
-    return "?";
+    if (value === 0) { setShift("shift1"); return "" }
+    if (value === 1) { setShift("shift2"); return "" }
+    if (value === 2) { setShift("shift3"); return "" }
+    if (value === 3) { return " " }
+    if (value >= 4 && value <= 13) { return String(value - 4) }
+    if (value >= 14 && value <= 39) { return String.fromCharCode(65 + value - 14) }
+    issues.push({ severity: "warning", message: "C40 value out of range", offset: null })
+    return "?"
   }
 
-  setShift("none");
+  setShift("none")
 
   if (shiftState === "shift1") {
     if (value >= 0 && value <= 31) {
-      return String.fromCharCode(value);
+      return String.fromCharCode(value)
     }
-    return "?";
+    return "?"
   }
 
   if (shiftState === "shift2") {
@@ -370,79 +424,99 @@ function decodeC40Value(value, issues, getShift, setShift) {
       13: ".",
       14: "/",
       15: ":",
-    };
-    return mapping[value] ?? "?";
+    }
+    return mapping[value] ?? "?"
   }
 
   if (shiftState === "shift3") {
-    if (value === 0) { return "`"; }
-    if (value >= 1 && value <= 26) { return String.fromCharCode(96 + value); }
-    const mapping = { 27: "{", 28: "|", 29: "}", 30: "~" };
-    return mapping[value] ?? "?";
+    if (value === 0) { return "`" }
+    if (value >= 1 && value <= 26) { return String.fromCharCode(96 + value) }
+    const mapping = { 27: "{", 28: "|", 29: "}", 30: "~" }
+    return mapping[value] ?? "?"
   }
 
-  return "?";
+  return "?"
 }
 
+/**
+ * Decode a C40 value into UTF-8 byte values.
+ * @param {number} value
+ * @param {Array} issues
+ * @param {() => string} getShift
+ * @param {(v: string) => void} setShift
+ * @returns {number[]}
+ */
 function decodeC40ValueBytes(value, issues, getShift, setShift) {
-  const text = decodeC40Value(value, issues, getShift, setShift);
-  return Array.from(Buffer.from(text, "utf8"));
+  const text = decodeC40Value(value, issues, getShift, setShift)
+  return Array.from(Buffer.from(text, "utf8"))
 }
 
+/**
+ * Decode raw C40 bytes into UTF-8 byte values.
+ * @param {Buffer} bytes
+ * @returns {number[]}
+ */
 function decodeC40Bytes(bytes) {
-  const buffer = Array.from(bytes);
-  const result = [];
-  let shiftState = "none";
-  let index = 0;
+  const buffer = Array.from(bytes)
+  const result = []
+  let shiftState = "none"
+  let index = 0
 
   while (index + 1 < buffer.length) {
-    const v = buffer[index] * 256 + buffer[index + 1];
-    const temp = v - 1;
-    const c1 = Math.floor(temp / 1600);
-    const c2 = Math.floor((temp % 1600) / 40);
-    const c3 = temp % 40;
-    result.push(...decodeC40ValueBytes(c1, [], () => shiftState, (v2) => { shiftState = v2; }));
-    result.push(...decodeC40ValueBytes(c2, [], () => shiftState, (v2) => { shiftState = v2; }));
-    result.push(...decodeC40ValueBytes(c3, [], () => shiftState, (v2) => { shiftState = v2; }));
-    index += 2;
+    const v = buffer[index] * 256 + buffer[index + 1]
+    const temp = v - 1
+    const c1 = Math.floor(temp / 1600)
+    const c2 = Math.floor((temp % 1600) / 40)
+    const c3 = temp % 40
+    result.push(...decodeC40ValueBytes(c1, [], () => shiftState, (v2) => { shiftState = v2 }))
+    result.push(...decodeC40ValueBytes(c2, [], () => shiftState, (v2) => { shiftState = v2 }))
+    result.push(...decodeC40ValueBytes(c3, [], () => shiftState, (v2) => { shiftState = v2 }))
+    index += 2
   }
 
-  return result;
+  return result
 }
 
+/**
+ * Fallback header parser that scans for profile/document category.
+ * @param {Buffer} payload
+ * @param {number} startOffset
+ * @param {Array} issues
+ * @returns {{ header: object, tlvStartOffset: number, profileOffset: number }|null}
+ */
 function parseHeaderFallback(payload, startOffset, issues) {
-  const profileCandidates = new Set([0x07, 0x08, 0x09]);
-  let i = startOffset + 6;
+  const profileCandidates = new Set([0x07, 0x08, 0x09])
+  let i = startOffset + 6
 
   while (i + 1 < payload.length) {
-    const profile = payload[i];
-    const documentCategory = payload[i + 1];
+    const profile = payload[i]
+    const documentCategory = payload[i + 1]
     if (profileCandidates.has(profile) && documentCategory === 0x09 && i >= 6) {
-      const signerEnd = i - 6;
+      const signerEnd = i - 6
       if (signerEnd >= startOffset) {
-        const signerData = payload.subarray(startOffset, signerEnd);
-        const decoded = decodeC40Bytes(signerData);
-        const signerCountry = decoded.length >= 2 ? Buffer.from(decoded.slice(0, 2)).toString("ascii") : "";
-        const signerEntity = decoded.length >= 4 ? Buffer.from(decoded.slice(2, 4)).toString("ascii") : "";
+        const signerData = payload.subarray(startOffset, signerEnd)
+        const decoded = decodeC40Bytes(signerData)
+        const signerCountry = decoded.length >= 2 ? Buffer.from(decoded.slice(0, 2)).toString("ascii") : ""
+        const signerEntity = decoded.length >= 4 ? Buffer.from(decoded.slice(2, 4)).toString("ascii") : ""
 
-        let certReferenceHex = "";
+        let certReferenceHex = ""
         if (decoded.length >= 6) {
-          const lengthHex = Buffer.from(decoded.slice(4, 6)).toString("ascii");
-          const certLength = Number.parseInt(lengthHex, 16);
+          const lengthHex = Buffer.from(decoded.slice(4, 6)).toString("ascii")
+          const certLength = Number.parseInt(lengthHex, 16)
           if (!Number.isNaN(certLength)) {
-            const needed = 6 + certLength * 2;
+            const needed = 6 + certLength * 2
             if (decoded.length >= needed) {
-              certReferenceHex = Buffer.from(decoded.slice(6, needed)).toString("ascii");
+              certReferenceHex = Buffer.from(decoded.slice(6, needed)).toString("ascii")
             } else if (decoded.length > 6) {
-              certReferenceHex = Buffer.from(decoded.slice(6)).toString("ascii");
+              certReferenceHex = Buffer.from(decoded.slice(6)).toString("ascii")
             }
           } else if (decoded.length > 4) {
-            certReferenceHex = Buffer.from(decoded.slice(4)).toString("ascii");
+            certReferenceHex = Buffer.from(decoded.slice(4)).toString("ascii")
           }
         }
 
-        const issueDateRaw = payload.subarray(i - 6, i - 3);
-        const signatureDateRaw = payload.subarray(i - 3, i);
+        const issueDateRaw = payload.subarray(i - 6, i - 3)
+        const signatureDateRaw = payload.subarray(i - 3, i)
 
         const header = {
           magic: payload[0],
@@ -454,169 +528,197 @@ function parseHeaderFallback(payload, startOffset, issues) {
           signatureDateRaw,
           profile,
           documentCategory,
-        };
+        }
 
-        return { header, tlvStartOffset: i + 2, profileOffset: i };
+        return { header, tlvStartOffset: i + 2, profileOffset: i }
       }
     }
-    i += 1;
+    i += 1
   }
 
-  issues.push({ severity: "error", message: "Header fallback failed", offset: startOffset });
-  return null;
+  issues.push({ severity: "error", message: "Header fallback failed", offset: startOffset })
+  return null
 }
 
+/**
+ * Locate the first plausible TLV tag offset.
+ * @param {Buffer} payload
+ * @param {number} startOffset
+ * @returns {number|null}
+ */
 function findTLVStart(payload, startOffset) {
   const knownTags = new Set([
     0x40, 0x42, 0x44, 0x46, 0x48, 0x4C, 0x50, 0x60, 0x62, 0x64,
     0x66, 0x68, 0x70, 0x72, 0x74, 0x76, 0x78, 0x7A, 0x80, 0xFF,
-  ]);
+  ])
 
-  let i = startOffset;
+  let i = startOffset
   while (i < payload.length) {
-    const tag = payload[i];
+    const tag = payload[i]
     if (knownTags.has(tag)) {
-      let tempCursor = i + 1;
-      const length = parseTLVLength(payload, { cursorRef: () => tempCursor, setCursor: (v) => { tempCursor = v; } }, []);
+      let tempCursor = i + 1
+      const length = parseTLVLength(payload, { cursorRef: () => tempCursor, setCursor: (v) => { tempCursor = v } }, [])
       if (length !== null) {
-        const valueEnd = tempCursor + length;
+        const valueEnd = tempCursor + length
         if (valueEnd <= payload.length) {
-          return i;
+          return i
         }
       }
     }
-    i += 1;
+    i += 1
   }
 
-  return null;
+  return null
 }
 
+/**
+ * Decode a TLV field into a normalized representation.
+ * @param {number} tag
+ * @param {Buffer} value
+ * @returns {{ tag: number, rawLength: number, name: string, value: any }|null}
+ */
 function decodeKnownField(tag, value) {
-  const base = { tag, rawLength: value.length };
+  const base = { tag, rawLength: value.length }
 
   switch (tag) {
     case 0x40:
-      return { ...base, name: "Document number", value: decodeLatin1(value) };
+      return { ...base, name: "Document number", value: decodeLatin1(value) }
     case 0x42:
-      return { ...base, name: "Date of birth", value: decodeLatin1(value) };
+      return { ...base, name: "Date of birth", value: decodeLatin1(value) }
     case 0x44:
-      return { ...base, name: "Given name", value: decodeLatin1(value) };
+      return { ...base, name: "Given name", value: decodeLatin1(value) }
     case 0x46:
-      return { ...base, name: "Surname", value: decodeLatin1(value) };
+      return { ...base, name: "Surname", value: decodeLatin1(value) }
     case 0x48:
-      return { ...base, name: "Sex", value: decodeLatin1(value) };
+      return { ...base, name: "Sex", value: decodeLatin1(value) }
     case 0x4C:
-      return { ...base, name: "Document expiry date", value: decodeLatin1(value) };
+      return { ...base, name: "Document expiry date", value: decodeLatin1(value) }
     case 0x50:
-      return buildThumbnailField(base, value);
+      return buildThumbnailField(base, value)
     case 0x60:
-      return { ...base, name: "Address (full)", value: decodeLatin1(value) };
+      return { ...base, name: "Address (full)", value: decodeLatin1(value) }
     case 0x72:
-      return { ...base, name: "Address line 1", value: decodeLatin1(value) };
+      return { ...base, name: "Address line 1", value: decodeLatin1(value) }
     case 0x74:
-      return { ...base, name: "Address line 2", value: decodeLatin1(value) };
+      return { ...base, name: "Address line 2", value: decodeLatin1(value) }
     case 0x76:
-      return { ...base, name: "Address line 3", value: decodeLatin1(value) };
+      return { ...base, name: "Address line 3", value: decodeLatin1(value) }
     case 0x62:
-      return { ...base, name: "Place of birth line 1", value: decodeLatin1(value) };
+      return { ...base, name: "Place of birth line 1", value: decodeLatin1(value) }
     case 0x78:
-      return { ...base, name: "Place of birth line 2", value: decodeLatin1(value) };
+      return { ...base, name: "Place of birth line 2", value: decodeLatin1(value) }
     case 0x7A:
-      return { ...base, name: "Place of birth line 3", value: decodeLatin1(value) };
+      return { ...base, name: "Place of birth line 3", value: decodeLatin1(value) }
     case 0x64:
-      return { ...base, name: "Nationality", value: decodeLatin1(value) };
+      return { ...base, name: "Nationality", value: decodeLatin1(value) }
     case 0x66:
-      return { ...base, name: "Parents", value: decodeLatin1(value) };
+      return { ...base, name: "Parents", value: decodeLatin1(value) }
     case 0x68:
-      return { ...base, name: "DNI support number", value: decodeLatin1(value) };
+      return { ...base, name: "DNI support number", value: decodeLatin1(value) }
     case 0x70:
-      return { ...base, name: "Is adult", value: value[0] === 0x01 };
+      return { ...base, name: "Is adult", value: value[0] === 0x01 }
     case 0x80:
-      return { ...base, name: "Data expiry", value: decodeLatin1(value) };
+      return { ...base, name: "Data expiry", value: decodeLatin1(value) }
     default:
-      return null;
+      return null
   }
 }
 
+/**
+ * Decode ISO-8859-1/Latin-1 text.
+ * @param {Buffer} data
+ * @returns {string}
+ */
 function decodeLatin1(data) {
-  return data.toString("latin1");
+  return data.toString("latin1")
 }
 
+/**
+ * Build the thumbnail field, optionally base64-encoding the JPEG2000 payload.
+ * @param {{ tag: number, rawLength: number }} base
+ * @param {Buffer} value
+ * @returns {{ tag: number, rawLength: number, name: string, value: string|null }}
+ */
 function buildThumbnailField(base, value) {
-  const includeBase64 = (process.env.INCLUDE_THUMBNAIL_BASE64 || "true").toLowerCase() === "true";
+  const includeBase64 = (process.env.INCLUDE_THUMBNAIL_BASE64 || "true").toLowerCase() === "true"
   if (!includeBase64) {
-    return { ...base, name: "Thumbnail (JPEG2000)", value: null };
+    return { ...base, name: "Thumbnail (JPEG2000)", value: null }
   }
 
   return {
     ...base,
     name: "Thumbnail (JPEG2000)",
     value: value.toString("base64"),
-  };
+  }
 }
 
+/**
+ * Apply a decoded field to the normalized output model.
+ * @param {object} data
+ * @param {{ tag: number, value: any }} field
+ */
 function applyFieldToData(data, field) {
   switch (field.tag) {
     case 0x40:
-      data.documentNumber = field.value;
-      break;
+      data.documentNumber = field.value
+      break
     case 0x42:
-      data.birthDate = field.value;
-      break;
+      data.birthDate = field.value
+      break
     case 0x44:
-      data.givenName = field.value;
-      break;
+      data.givenName = field.value
+      break
     case 0x46:
-      data.surnames = field.value;
-      break;
+      data.surnames = field.value
+      break
     case 0x48:
-      data.sex = field.value;
-      break;
+      data.sex = field.value
+      break
     case 0x4C:
-      data.documentExpiry = field.value;
-      break;
+      data.documentExpiry = field.value
+      break
     case 0x50:
       if (field.value) {
-        data.thumbnailBase64 = field.value;
+        data.thumbnailBase64 = field.value
       }
-      break;
+      break
     case 0x60:
-      data.addressFull = field.value || null;
-      break;
+      data.addressFull = field.value || null
+      break
     case 0x72:
     case 0x74:
     case 0x76:
       if (field.value) {
-        data.addressLines.push(field.value);
+        data.addressLines.push(field.value)
       }
-      break;
+      break
     case 0x62:
     case 0x78:
     case 0x7A:
       if (field.value) {
-        data.placeOfBirthLines.push(field.value);
+        data.placeOfBirthLines.push(field.value)
       }
-      break;
+      break
     case 0x64:
-      data.nationality = field.value;
-      break;
+      data.nationality = field.value
+      break
     case 0x66:
-      data.parents = field.value;
-      break;
+      data.parents = field.value
+      break
     case 0x68:
-      data.supportNumber = field.value;
-      break;
+      data.supportNumber = field.value
+      break
     case 0x70:
-      data.isAdult = field.value === true;
-      break;
+      data.isAdult = field.value === true
+      break
     case 0x80:
-      data.dataExpiry = field.value;
-      break;
+      data.dataExpiry = field.value
+      break
     default:
-      break;
+      break
   }
 }
 
 module.exports = {
   parseQRPayload,
-};
+}

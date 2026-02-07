@@ -1,71 +1,82 @@
-const crypto = require("crypto");
-const logger = require("../logger");
+const crypto = require("crypto")
+const logger = require("../logger")
 
-const DEFAULT_CERT_BASE_URL = "http://pki.policia.es/cnp/MiDNI";
-const DEFAULT_CERT_FILE = "APPDNIMOVIL.cer";
-const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_CERT_BASE_URL = "http://pki.policia.es/cnp/MiDNI"
+const DEFAULT_CERT_FILE = "APPDNIMOVIL.cer"
+const DEFAULT_TIMEOUT_MS = 5000
 
+/**
+ * Fetch the signing certificate whose serial matches the header reference.
+ * @param {string} serialHex
+ * @returns {Promise<{ certificate: import("crypto").X509Certificate, url: string, serial: string, raw: Buffer }>} 
+ */
 async function fetchCertificateBySerial(serialHex) {
   if (!serialHex) {
-    throw new Error("Certificate reference is empty");
+    throw new Error("Certificate reference is empty")
   }
 
-  const baseUrl = process.env.CERT_BASE_URL || DEFAULT_CERT_BASE_URL;
-  const certFile = process.env.CERT_FILE || DEFAULT_CERT_FILE;
-  const normalizedSerial = normalizeSerial(serialHex);
+  const baseUrl = process.env.CERT_BASE_URL || DEFAULT_CERT_BASE_URL
+  const certFile = process.env.CERT_FILE || DEFAULT_CERT_FILE
+  const normalizedSerial = normalizeSerial(serialHex)
 
-  const candidates = [];
+  const candidates = []
   if (certFile) {
-    candidates.push(new URL(certFile, `${baseUrl}/`).toString());
+    candidates.push(new URL(certFile, `${baseUrl}/`).toString())
   }
-  candidates.push(baseUrl);
+  candidates.push(baseUrl)
 
   for (const url of candidates) {
-    logger.debug({ url, serial: normalizedSerial }, "Trying certificate URL");
-    const result = await tryFetchCertificate(url, normalizedSerial);
+    logger.debug({ url, serial: normalizedSerial }, "Trying certificate URL")
+    const result = await tryFetchCertificate(url, normalizedSerial)
     if (result) {
-      logger.info({ url, serial: normalizedSerial }, "Certificate found");
-      return result;
+      logger.info({ url, serial: normalizedSerial }, "Certificate found")
+      return result
     }
   }
 
-  logger.debug({ baseUrl }, "Fetching certificate index page");
-  const indexResponse = await fetchUrl(baseUrl);
+  logger.debug({ baseUrl }, "Fetching certificate index page")
+  const indexResponse = await fetchUrl(baseUrl)
   if (!indexResponse.ok) {
-    logger.error({ baseUrl, status: indexResponse.status }, "Certificate index fetch failed");
-    throw new Error(`Certificate list request failed with ${indexResponse.status}`);
+    logger.error({ baseUrl, status: indexResponse.status }, "Certificate index fetch failed")
+    throw new Error(`Certificate list request failed with ${indexResponse.status}`)
   }
 
-  const indexBuffer = Buffer.from(await indexResponse.arrayBuffer());
-  const htmlLinks = extractCertificateLinks(indexBuffer, baseUrl);
+  const indexBuffer = Buffer.from(await indexResponse.arrayBuffer())
+  const htmlLinks = extractCertificateLinks(indexBuffer, baseUrl)
   for (const link of htmlLinks) {
-    logger.debug({ url: link }, "Trying certificate link from index");
-    const result = await tryFetchCertificate(link, normalizedSerial);
+    logger.debug({ url: link }, "Trying certificate link from index")
+    const result = await tryFetchCertificate(link, normalizedSerial)
     if (result) {
-      logger.info({ url: link, serial: normalizedSerial }, "Certificate found via index");
-      return result;
+      logger.info({ url: link, serial: normalizedSerial }, "Certificate found via index")
+      return result
     }
   }
 
-  logger.error({ serial: serialHex }, "Certificate not found after exhausting all sources");
-  throw new Error("Certificate with provided reference not found");
+  logger.error({ serial: serialHex }, "Certificate not found after exhausting all sources")
+  throw new Error("Certificate with provided reference not found")
 }
 
+/**
+ * Try to download and parse a certificate from a URL and compare serials.
+ * @param {string} url
+ * @param {string} expectedSerial
+ * @returns {Promise<{ certificate: import("crypto").X509Certificate, url: string, serial: string, raw: Buffer }|null>}
+ */
 async function tryFetchCertificate(url, expectedSerial) {
-  const response = await fetchUrl(url);
+  const response = await fetchUrl(url)
   if (!response.ok) {
-    return null;
+    return null
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const cert = parseCertificate(buffer);
+  const buffer = Buffer.from(await response.arrayBuffer())
+  const cert = parseCertificate(buffer)
   if (!cert) {
-    return null;
+    return null
   }
 
-  const serial = normalizeSerial(cert.serialNumber || "");
+  const serial = normalizeSerial(cert.serialNumber || "")
   if (trimLeadingZeros(serial) !== trimLeadingZeros(expectedSerial)) {
-    return null;
+    return null
   }
 
   return {
@@ -73,58 +84,84 @@ async function tryFetchCertificate(url, expectedSerial) {
     url,
     serial,
     raw: cert.raw,
-  };
+  }
 }
 
+/**
+ * Parse a certificate in DER or PEM format.
+ * @param {Buffer} data
+ * @returns {import("crypto").X509Certificate|null}
+ */
 function parseCertificate(data) {
   try {
-    return new crypto.X509Certificate(data);
-  } catch (_error) {
-    const text = data.toString("utf8");
+    return new crypto.X509Certificate(data)
+  } catch {
+    const text = data.toString("utf8")
     if (text.includes("BEGIN CERTIFICATE")) {
       try {
-        return new crypto.X509Certificate(text);
-      } catch (_pemError) {
-        return null;
+        return new crypto.X509Certificate(text)
+      } catch {
+        return null
       }
     }
-    return null;
+    return null
   }
 }
 
+/**
+ * Extract certificate links from an HTML directory listing.
+ * @param {Buffer} buffer
+ * @param {string} baseUrl
+ * @returns {string[]}
+ */
 function extractCertificateLinks(buffer, baseUrl) {
-  const html = buffer.toString("utf8");
-  const regex = /href="([^"]+\.(?:cer|crt))"/gi;
-  const links = [];
-  let match;
+  const html = buffer.toString("utf8")
+  const regex = /href="([^"]+\.(?:cer|crt))"/gi
+  const links = []
+  let match
   while ((match = regex.exec(html)) !== null) {
-    const href = match[1];
+    const href = match[1]
     try {
-      const url = new URL(href, baseUrl).toString();
-      links.push(url);
-    } catch (_error) {
-      continue;
+      const url = new URL(href, baseUrl).toString()
+      links.push(url)
+    } catch {
+      continue
     }
   }
-  return links;
+  return links
 }
 
+/**
+ * Normalize a serial string to uppercase hex without separators.
+ * @param {string} hex
+ * @returns {string}
+ */
 function normalizeSerial(hex) {
-  return hex.toUpperCase().replace(/[^0-9A-F]/g, "");
+  return hex.toUpperCase().replace(/[^0-9A-F]/g, "")
 }
 
+/**
+ * Trim leading zeros to compare serial numbers consistently.
+ * @param {string} hex
+ * @returns {string}
+ */
 function trimLeadingZeros(hex) {
-  const trimmed = hex.replace(/^0+/, "");
-  return trimmed.length > 0 ? trimmed : "0";
+  const trimmed = hex.replace(/^0+/, "")
+  return trimmed.length > 0 ? trimmed : "0"
 }
 
+/**
+ * Fetch a URL with a timeout.
+ * @param {string} url
+ * @returns {Promise<Response>}
+ */
 async function fetchUrl(url) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
   try {
-    return await fetch(url, { signal: controller.signal });
+    return await fetch(url, { signal: controller.signal })
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timeout)
   }
 }
 
@@ -132,4 +169,4 @@ module.exports = {
   fetchCertificateBySerial,
   normalizeSerial,
   trimLeadingZeros,
-};
+}

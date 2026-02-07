@@ -1,4 +1,9 @@
-const pino = require("pino");
+const pino = require("pino")
+
+/**
+ * Application logger with environment-driven log level and
+ * pretty-print transport for non-production environments.
+ */
 
 const logger = pino({
   level: process.env.LOG_LEVEL || "info",
@@ -8,6 +13,6 @@ const logger = pino({
       options: { colorize: true },
     },
   }),
-});
+})
 
-module.exports = logger;
+module.exports = logger
