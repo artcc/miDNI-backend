@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.0.2] - 2026-02-06
+## [0.0.1] - 2026-02-06
 
 ### Security
 - Timing-safe token comparison with `crypto.timingSafeEqual`.
@@ -13,8 +13,6 @@ All notable changes to this project will be documented in this file.
 - Structured logging with `pino` and `pino-http`.
 - Global error handling in verify route.
 - Configurable `LOG_LEVEL` environment variable.
-
-## [0.0.1] - 2026-02-06
 
 ### Added
 - Initial Express backend with Bearer auth and `/verify` endpoint.

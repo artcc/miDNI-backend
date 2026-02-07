@@ -25,6 +25,9 @@ npm install
 npm run dev
 ```
 
+## Deployment
+Render: https://midni-backend.onrender.com
+
 ## Endpoints
 ### POST /verify
 Header:
