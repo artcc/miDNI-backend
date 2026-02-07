@@ -58,13 +58,21 @@ Responses and JSON examples:
 ```json
 {
    "valid": true,
-   "dni": "12345678X",
-   "nombre": "NOMBRE",
-   "apellidos": "APELLIDOS",
-   "fechaNacimiento": "01-01-1990",
-   "sexo": "M",
-   "caducidadDocumento": "01-01-2030",
-   "mayorEdad": true,
+   "documentNumber": "12345678X",
+   "givenName": "NOMBRE",
+   "surnames": "APELLIDOS",
+   "birthDate": "01-01-1990",
+   "sex": "M",
+   "documentExpiry": "01-01-2030",
+   "nationality": "ESP",
+   "parents": "PADRE / MADRE",
+   "supportNumber": "ABC123456",
+   "isAdult": true,
+   "dataExpiry": "07-02-2026 12:34:56",
+   "addressFull": "CALLE EJEMPLO 1, 2B, MADRID",
+   "addressLines": ["CALLE EJEMPLO 1", "2B", "MADRID"],
+   "placeOfBirthLines": ["MADRID", "MADRID", "ESP"],
+   "thumbnailBase64": null,
    "rawFields": {
       "0x40": { "name": "Document number", "value": "12345678X" },
       "header": {
@@ -114,28 +122,32 @@ Responses and JSON examples:
 #### 401 Unauthorized (missing bearer)
 ```json
 {
-   "error": "missing_bearer_token"
+   "valid": false,
+   "reason": "AUTH_MISSING_BEARER"
 }
 ```
 
 #### 403 Forbidden (invalid bearer)
 ```json
 {
-   "error": "invalid_bearer_token"
+   "valid": false,
+   "reason": "AUTH_INVALID_BEARER"
 }
 ```
 
 #### 429 Too Many Requests (rate limit exceeded)
 ```json
 {
-   "error": "too_many_requests"
+   "valid": false,
+   "reason": "RATE_LIMITED"
 }
 ```
 
 #### 500 Internal Server Error (server not configured)
 ```json
 {
-   "error": "server_not_configured"
+   "valid": false,
+   "reason": "SERVER_NOT_CONFIGURED"
 }
 ```
 
@@ -147,15 +159,23 @@ Responses and JSON examples:
 }
 ```
 
-When `valid: true`
+When `valid: true`, the response shape is the same for all QR types and all fields are optional:
 
-- `dni`
-- `nombre`
-- `apellidos`
-- `fechaNacimiento`
-- `sexo`
-- `caducidadDocumento`
-- `mayorEdad`
+- `documentNumber`
+- `givenName`
+- `surnames`
+- `birthDate`
+- `sex`
+- `documentExpiry`
+- `nationality`
+- `parents`
+- `supportNumber`
+- `isAdult`
+- `dataExpiry`
+- `addressFull`
+- `addressLines` (array)
+- `placeOfBirthLines` (array)
+- `thumbnailBase64` (only when `INCLUDE_THUMBNAIL_BASE64=true`)
 - `rawFields` (all parsed TLV fields + header metadata)
 
 When `valid: false`, possible `reason` values:
@@ -166,6 +186,12 @@ When `valid: false`, possible `reason` values:
 | `CERT_INVALID` | Certificate not found, expired, revoked, or OCSP failed |
 | `SIGNATURE_INVALID` | ECDSA signature verification failed |
 | `QR_EXPIRED` | Data expiry (tag 0x80) is in the past |
+| `AUTH_MISSING_BEARER` | Authorization header missing or incomplete |
+| `AUTH_INVALID_BEARER` | Bearer token does not match |
+| `RATE_LIMITED` | Too many requests |
+| `SERVER_NOT_CONFIGURED` | Server missing required configuration |
+| `INVALID_JSON` | Malformed JSON body |
+| `INTERNAL_ERROR` | Unexpected server error |
 
 ## CNP Certificate
 - Certificate source: http://pki.policia.es/cnp/MiDNI

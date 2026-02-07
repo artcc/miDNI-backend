@@ -19,7 +19,7 @@ const { checkOcspStatus } = require("./ocsp");
  *   7. Return extracted data ONLY if everything is valid
  *
  * Returns:
- *   { valid: true, dni, nombre, apellidos, ... }  on success
+ *   { valid: true, documentNumber, givenName, surnames, ... }  on success
  *   { valid: false, reason: "STRUCTURE_INVALID | CERT_INVALID |
  *                            SIGNATURE_INVALID | QR_EXPIRED" }  on failure
  */
@@ -115,13 +115,21 @@ async function verifySignature({ payloadBytes }) {
   const d = parsed.data;
   return {
     valid: true,
-    dni: d.documentNumber,
-    nombre: d.givenName,
-    apellidos: d.surnames,
-    fechaNacimiento: d.birthDate,
-    sexo: d.sex,
-    caducidadDocumento: d.documentExpiry,
-    mayorEdad: d.isAdult,
+    documentNumber: d.documentNumber,
+    givenName: d.givenName,
+    surnames: d.surnames,
+    birthDate: d.birthDate,
+    sex: d.sex,
+    documentExpiry: d.documentExpiry,
+    nationality: d.nationality,
+    parents: d.parents,
+    supportNumber: d.supportNumber,
+    isAdult: d.isAdult,
+    dataExpiry: d.dataExpiry,
+    addressFull: d.addressFull,
+    addressLines: d.addressLines,
+    placeOfBirthLines: d.placeOfBirthLines,
+    thumbnailBase64: d.thumbnailBase64,
     rawFields: buildRawFields(parsed),
   };
 }
