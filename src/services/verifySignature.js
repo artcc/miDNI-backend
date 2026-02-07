@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const logger = require("../logger");
+const { decodeQrPayload } = require("./qrDecoder");
 const { parseQRPayload } = require("./qrParser");
 const { fetchCertificateBySerial } = require("./certProvider");
 const { loadCaCertificate, loadIntermediateCertificates, buildCertificateChain } = require("./trust");
@@ -7,7 +8,7 @@ const { checkOcspStatus } = require("./ocsp");
 
 async function verifySignature({ payloadBytes }) {
   const rawPayload = Buffer.from(payloadBytes);
-  const payload = stripQrByteMode(rawPayload);
+  const payload = decodeQrPayload(rawPayload);
   const parsed = parseQRPayload(payload);
 
   if (!parsed.isValid || !parsed.header || !parsed.signatureRaw || !parsed.signedDataRange) {
@@ -276,82 +277,6 @@ function encodeAsn1Length(length) {
 
 function buildResponse(httpStatus, body) {
   return { httpStatus, body };
-}
-
-/**
- * Strip QR Code bitstream encoding if present.
- *
- * iOS `CIQRCodeDescriptor.errorCorrectedPayload` returns the raw QR
- * data codewords which include mode indicators, character counts and
- * QR padding (0xEC 0x11).  This function decodes the full bitstream
- * (supporting multiple byte-mode segments and ECI) so the VDS parser
- * receives a buffer that starts with the expected 0xDC magic byte.
- */
-function stripQrByteMode(payload) {
-  if (payload.length === 0 || payload[0] === 0xDC) {
-    return payload;
-  }
-
-  // Try 16-bit byte-mode count first (QR version >= 10, most common for miDNI)
-  const decoded16 = decodeQrBitstream(payload, 16);
-  if (decoded16 && decoded16.length > 0 && decoded16[0] === 0xDC) {
-    logger.info({ originalSize: payload.length, dataSize: decoded16.length }, "Decoded QR bitstream (16-bit count)");
-    return decoded16;
-  }
-
-  // Try 8-bit byte-mode count (QR version 1-9)
-  const decoded8 = decodeQrBitstream(payload, 8);
-  if (decoded8 && decoded8.length > 0 && decoded8[0] === 0xDC) {
-    logger.info({ originalSize: payload.length, dataSize: decoded8.length }, "Decoded QR bitstream (8-bit count)");
-    return decoded8;
-  }
-
-  return payload;
-}
-
-function decodeQrBitstream(payload, byteCountBits) {
-  const totalBits = payload.length * 8;
-  let bitPos = 0;
-  const output = [];
-
-  function readBits(count) {
-    if (bitPos + count > totalBits) return null;
-    let value = 0;
-    for (let i = 0; i < count; i++) {
-      const byteIndex = (bitPos + i) >> 3;
-      const bitIndex = 7 - ((bitPos + i) & 7);
-      value = (value << 1) | ((payload[byteIndex] >> bitIndex) & 1);
-    }
-    bitPos += count;
-    return value;
-  }
-
-  while (bitPos + 4 <= totalBits) {
-    const mode = readBits(4);
-    if (mode === null || mode === 0) break;
-
-    if (mode === 4) {
-      // Byte mode
-      const count = readBits(byteCountBits);
-      if (count === null || count <= 0) break;
-      for (let i = 0; i < count; i++) {
-        const b = readBits(8);
-        if (b === null) return output.length > 0 ? Buffer.from(output) : null;
-        output.push(b);
-      }
-    } else if (mode === 7) {
-      // ECI mode — skip the designator
-      const first = readBits(8);
-      if (first === null) break;
-      if ((first & 0xC0) === 0x80) { readBits(8); }
-      else if ((first & 0xE0) === 0xC0) { readBits(16); }
-    } else {
-      // Unsupported mode (numeric, alphanumeric, kanji…), stop
-      break;
-    }
-  }
-
-  return output.length > 0 ? Buffer.from(output) : null;
 }
 
 module.exports = {

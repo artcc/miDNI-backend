@@ -38,9 +38,13 @@ Authorization: Bearer <token>
 JSON body:
 ```json
 {
-   "payloadBytes": [220, 3, 69, 83, 32, 17]
+   "payloadBytes": [64, 4, 125, 192, 55, 88, 23, 89]
 }
 ```
+
+The `payloadBytes` array accepts either:
+- **Raw QR codewords** (`errorCorrectedPayload` from iOS) — the backend decodes the QR bitstream automatically.
+- **VDS payload** (starting with `0xDC 0x03`) — used directly without decoding.
 
 Responses and JSON examples:
 
