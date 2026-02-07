@@ -6,7 +6,8 @@ const { loadCaCertificate, loadIntermediateCertificates, buildCertificateChain }
 const { checkOcspStatus } = require("./ocsp");
 
 async function verifySignature({ payloadBytes }) {
-  const payload = Buffer.from(payloadBytes);
+  const rawPayload = Buffer.from(payloadBytes);
+  const payload = stripQrByteMode(rawPayload);
   const parsed = parseQRPayload(payload);
 
   if (!parsed.isValid || !parsed.header || !parsed.signatureRaw || !parsed.signedDataRange) {
@@ -275,6 +276,57 @@ function encodeAsn1Length(length) {
 
 function buildResponse(httpStatus, body) {
   return { httpStatus, body };
+}
+
+/**
+ * Strip QR Code byte-mode encoding if present.
+ *
+ * iOS `CIQRCodeDescriptor.errorCorrectedPayload` returns the raw QR
+ * data codewords which include the mode indicator (4 bits), character
+ * count (8 or 16 bits) and QR padding (0xEC 0x11).  This function
+ * extracts the actual data bytes so the VDS parser receives a buffer
+ * that starts with the expected 0xDC magic byte.
+ */
+function stripQrByteMode(payload) {
+  if (payload.length === 0 || payload[0] === 0xDC) {
+    return payload;
+  }
+
+  if ((payload[0] & 0xF0) !== 0x40) {
+    return payload;
+  }
+
+  // 16-bit character count (QR version 10+, data starts at bit 20)
+  if (payload.length >= 4) {
+    const count = ((payload[0] & 0x0F) << 12) | (payload[1] << 4) | (payload[2] >> 4);
+    if (count > 0 && payload.length >= count + 3) {
+      const data = Buffer.alloc(count);
+      for (let i = 0; i < count; i++) {
+        data[i] = ((payload[i + 2] & 0x0F) << 4) | (payload[i + 3] >> 4);
+      }
+      if (data[0] === 0xDC) {
+        logger.info({ originalSize: payload.length, dataSize: count }, "Stripped QR byte-mode encoding (16-bit count)");
+        return data;
+      }
+    }
+  }
+
+  // 8-bit character count (QR version 1-9, data starts at bit 12)
+  if (payload.length >= 3) {
+    const count = ((payload[0] & 0x0F) << 4) | (payload[1] >> 4);
+    if (count > 0 && payload.length >= count + 2) {
+      const data = Buffer.alloc(count);
+      for (let i = 0; i < count; i++) {
+        data[i] = ((payload[i + 1] & 0x0F) << 4) | (payload[i + 2] >> 4);
+      }
+      if (data[0] === 0xDC) {
+        logger.info({ originalSize: payload.length, dataSize: count }, "Stripped QR byte-mode encoding (8-bit count)");
+        return data;
+      }
+    }
+  }
+
+  return payload;
 }
 
 module.exports = {
