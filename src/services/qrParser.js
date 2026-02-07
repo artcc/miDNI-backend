@@ -543,7 +543,7 @@ function decodeLatin1(data) {
 }
 
 function buildThumbnailField(base, value) {
-  const includeBase64 = (process.env.INCLUDE_THUMBNAIL_BASE64 || "false").toLowerCase() === "true";
+  const includeBase64 = (process.env.INCLUDE_THUMBNAIL_BASE64 || "true").toLowerCase() === "true";
   if (!includeBase64) {
     return { ...base, name: "Thumbnail (JPEG2000)", value: null };
   }

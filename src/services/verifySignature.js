@@ -124,7 +124,7 @@ async function verifySignature({ payloadBytes }) {
     nationality: d.nationality,
     parents: d.parents,
     supportNumber: d.supportNumber,
-    isAdult: d.isAdult,
+    isAdult: d.isAdult === true,
     dataExpiry: d.dataExpiry,
     addressFull: d.addressFull,
     addressLines: d.addressLines,

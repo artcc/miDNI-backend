@@ -175,7 +175,7 @@ When `valid: true`, the response shape is the same for all QR types and all fiel
 - `addressFull`
 - `addressLines` (array)
 - `placeOfBirthLines` (array)
-- `thumbnailBase64` (only when `INCLUDE_THUMBNAIL_BASE64=true`)
+- `thumbnailBase64` (enabled by default; set `INCLUDE_THUMBNAIL_BASE64=false` to disable)
 - `rawFields` (all parsed TLV fields + header metadata)
 
 When `valid: false`, possible `reason` values:
