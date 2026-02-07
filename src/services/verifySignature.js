@@ -113,6 +113,7 @@ async function verifySignature({ payloadBytes }) {
   logger.info({ dataExpiry: expiryCheck.dataExpiry }, "Signature verified successfully");
 
   const d = parsed.data;
+  const isAdult = resolveIsAdult(d.isAdult, d.birthDate);
   return {
     valid: true,
     documentNumber: d.documentNumber,
@@ -124,7 +125,7 @@ async function verifySignature({ payloadBytes }) {
     nationality: d.nationality,
     parents: d.parents,
     supportNumber: d.supportNumber,
-    isAdult: d.isAdult === true,
+    isAdult,
     dataExpiry: d.dataExpiry,
     addressFull: d.addressFull,
     addressLines: d.addressLines,
@@ -189,6 +190,40 @@ function validateDataExpiry(text) {
   }
 
   return { isValid: true, dataExpiry: text };
+}
+
+function resolveIsAdult(isAdultValue, birthDateText) {
+  if (typeof isAdultValue === "boolean") {
+    return isAdultValue;
+  }
+
+  if (!birthDateText) {
+    return null;
+  }
+
+  const birthDate = parseBirthDate(birthDateText);
+  if (!birthDate) {
+    return null;
+  }
+
+  const now = new Date();
+  const adultDate = new Date(Date.UTC(
+    birthDate.getUTCFullYear() + 18,
+    birthDate.getUTCMonth(),
+    birthDate.getUTCDate(),
+  ));
+
+  return now >= adultDate;
+}
+
+function parseBirthDate(text) {
+  const match = text.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) {
+    return null;
+  }
+  const [, dd, mm, yyyy] = match;
+  const parsed = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+  return Number.isNaN(parsed.valueOf()) ? null : parsed;
 }
 
 // ────────── ECDSA r||s → ASN.1 DER conversion ──────────

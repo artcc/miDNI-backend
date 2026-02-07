@@ -178,6 +178,8 @@ When `valid: true`, the response shape is the same for all QR types and all fiel
 - `thumbnailBase64` (enabled by default; set `INCLUDE_THUMBNAIL_BASE64=false` to disable)
 - `rawFields` (all parsed TLV fields + header metadata)
 
+If TLV `0x70` is missing, `isAdult` is derived from `birthDate` (>= 18 years in UTC). If `birthDate` is missing or invalid, `isAdult` is `null`.
+
 When `valid: false`, possible `reason` values:
 
 | Reason | Description |
