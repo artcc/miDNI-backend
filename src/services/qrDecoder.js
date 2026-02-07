@@ -31,15 +31,26 @@ function decodeQrPayload(payload) {
     return payload;
   }
 
+  // Try all version groups and pick the decode that produces the most
+  // data bytes starting with 0xDC.  The correct version group always
+  // yields the longest valid output because wrong character-count bit
+  // widths cause early termination or garbage.
+  let best = null;
   for (const vg of VERSION_GROUPS) {
     const decoded = decodeBitstream(payload, vg);
     if (decoded && decoded.length > 0 && decoded[0] === 0xDC) {
-      logger.info(
-        { originalSize: payload.length, dataSize: decoded.length, versionGroup: vg.label },
-        "Decoded QR bitstream",
-      );
-      return decoded;
+      if (!best || decoded.length > best.decoded.length) {
+        best = { decoded, vg };
+      }
     }
+  }
+
+  if (best) {
+    logger.info(
+      { originalSize: payload.length, dataSize: best.decoded.length, versionGroup: best.vg.label },
+      "Decoded QR bitstream",
+    );
+    return best.decoded;
   }
 
   logger.warn({ firstByte: payload[0] }, "Could not decode QR bitstream, passing through as-is");
