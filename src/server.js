@@ -32,6 +32,16 @@ app.use(limiter);
 app.use(authMiddleware);
 app.use("/verify", verifyRouter);
 
+app.use((err, req, res, _next) => {
+  if (err.type === "entity.parse.failed") {
+    logger.warn({ ip: req.ip }, "Malformed JSON in request body");
+    res.status(400).json({ error: "invalid_json" });
+    return;
+  }
+  logger.error({ err }, "Unhandled error");
+  res.status(500).json({ error: "internal_error" });
+});
+
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
   logger.info({ port }, "miDNI backend listening");
