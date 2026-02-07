@@ -79,12 +79,12 @@ async function tryFetchCertificate(url, expectedSerial) {
 function parseCertificate(data) {
   try {
     return new crypto.X509Certificate(data);
-  } catch (error) {
+  } catch (_error) {
     const text = data.toString("utf8");
     if (text.includes("BEGIN CERTIFICATE")) {
       try {
         return new crypto.X509Certificate(text);
-      } catch (pemError) {
+      } catch (_pemError) {
         return null;
       }
     }
@@ -102,7 +102,7 @@ function extractCertificateLinks(buffer, baseUrl) {
     try {
       const url = new URL(href, baseUrl).toString();
       links.push(url);
-    } catch (error) {
+    } catch (_error) {
       continue;
     }
   }

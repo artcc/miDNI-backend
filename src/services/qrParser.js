@@ -103,7 +103,7 @@ function parseQRPayload(payload) {
     } else {
       addIssue("error", "Signer identifier could not be parsed", cursor);
       const tlvStart = findTLVStart(payload, cursor);
-      if (tlvStart != null) {
+      if (tlvStart !== null) {
         addIssue("warning", `TLV start found by heuristic at offset ${tlvStart}`, tlvStart);
         cursor = tlvStart;
       }
@@ -116,7 +116,7 @@ function parseQRPayload(payload) {
     cursor += 1;
 
     const length = parseTLVLength(payload, { cursorRef: () => cursor, setCursor: (v) => { cursor = v; } }, issues);
-    if (length == null) {
+    if (length === null) {
       addIssue("error", "Invalid TLV length", cursor);
       break;
     }
@@ -234,7 +234,7 @@ function parseSignerField(payload, offset, issues) {
     decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c2, issues, () => shiftState, (v) => { shiftState = v; }));
     decodedBytes = decodedBytes.concat(decodeC40ValueBytes(c3, issues, () => shiftState, (v) => { shiftState = v; }));
 
-    if (requiredChars == null && decodedBytes.length >= 6) {
+    if (requiredChars === null && decodedBytes.length >= 6) {
       const lengthHexBytes = decodedBytes.slice(4, 6);
       const lengthHex = Buffer.from(lengthHexBytes).toString("ascii");
       const certLength = Number.parseInt(lengthHex, 16);
@@ -247,7 +247,7 @@ function parseSignerField(payload, offset, issues) {
       targetPairs = neededBytes / 2;
     }
 
-    if (requiredChars != null && targetPairs != null && pairsConsumed >= targetPairs) {
+    if (requiredChars !== null && targetPairs !== null && pairsConsumed >= targetPairs) {
       if (decodedBytes.length < requiredChars) {
         issues.push({ severity: "error", message: "Signer identifier truncated (C40)", offset });
         return null;
@@ -478,7 +478,7 @@ function findTLVStart(payload, startOffset) {
     if (knownTags.has(tag)) {
       let tempCursor = i + 1;
       const length = parseTLVLength(payload, { cursorRef: () => tempCursor, setCursor: (v) => { tempCursor = v; } }, []);
-      if (length != null) {
+      if (length !== null) {
         const valueEnd = tempCursor + length;
         if (valueEnd <= payload.length) {
           return i;

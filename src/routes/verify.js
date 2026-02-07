@@ -48,22 +48,20 @@ router.post("/", async (req, res) => {
 
   if (validationError) {
     logger.warn({ error: validationError }, "Payload validation failed");
-    res.status(400).json({ error: validationError });
+    res.status(400).json({ valid: false, reason: "STRUCTURE_INVALID" });
     return;
   }
 
   logger.info({ payloadSize: payloadBytes.length }, "Verify request received");
 
   try {
-    const result = await verifySignature({
-      payloadBytes,
-    });
-
-    logger.info({ status: result.body?.status || "unknown", httpStatus: result.httpStatus }, "Verify result");
-    res.status(result.httpStatus || 200).json(result.body || result);
+    const result = await verifySignature({ payloadBytes });
+    const httpStatus = result.valid ? 200 : 400;
+    logger.info({ valid: result.valid, reason: result.reason, httpStatus }, "Verify result");
+    res.status(httpStatus).json(result);
   } catch (error) {
     logger.error({ err: error }, "Unexpected error during verification");
-    res.status(500).json({ error: "internal_error" });
+    res.status(500).json({ valid: false, reason: "INTERNAL_ERROR" });
   }
 });
 

@@ -7,24 +7,39 @@ const logger = require("../logger");
  *
  * If the input already starts with the VDS magic byte (0xDC) it is
  * returned as-is.
+ *
+ * The QR spec defines three version groups with different character-count
+ * field widths:
+ *   - Versions  1– 9 : byte  8-bit, alnum  9-bit, numeric 10-bit
+ *   - Versions 10–26 : byte 16-bit, alnum 11-bit, numeric 12-bit
+ *   - Versions 27–40 : byte 16-bit, alnum 13-bit, numeric 14-bit
+ *
+ * Since the QR version is not carried inside errorCorrectedPayload, the
+ * decoder tries all three groups and picks the first result that starts
+ * with the VDS magic byte 0xDC.
  */
+
+/** Version-group configurations: [byteCountBits, alnumCountBits, numericCountBits] */
+const VERSION_GROUPS = [
+  { label: "v27-40", byte: 16, alnum: 13, numeric: 14 },
+  { label: "v10-26", byte: 16, alnum: 11, numeric: 12 },
+  { label: "v1-9", byte: 8, alnum: 9, numeric: 10 },
+];
+
 function decodeQrPayload(payload) {
   if (payload.length === 0 || payload[0] === 0xDC) {
     return payload;
   }
 
-  // Try 16-bit byte-mode count first (QR version >= 10)
-  const decoded16 = decodeBitstream(payload, 16);
-  if (decoded16 && decoded16.length > 0 && decoded16[0] === 0xDC) {
-    logger.info({ originalSize: payload.length, dataSize: decoded16.length }, "Decoded QR bitstream (16-bit byte count)");
-    return decoded16;
-  }
-
-  // Try 8-bit byte-mode count (QR version 1-9)
-  const decoded8 = decodeBitstream(payload, 8);
-  if (decoded8 && decoded8.length > 0 && decoded8[0] === 0xDC) {
-    logger.info({ originalSize: payload.length, dataSize: decoded8.length }, "Decoded QR bitstream (8-bit byte count)");
-    return decoded8;
+  for (const vg of VERSION_GROUPS) {
+    const decoded = decodeBitstream(payload, vg);
+    if (decoded && decoded.length > 0 && decoded[0] === 0xDC) {
+      logger.info(
+        { originalSize: payload.length, dataSize: decoded.length, versionGroup: vg.label },
+        "Decoded QR bitstream",
+      );
+      return decoded;
+    }
   }
 
   logger.warn({ firstByte: payload[0] }, "Could not decode QR bitstream, passing through as-is");
@@ -41,10 +56,13 @@ function decodeQrPayload(payload) {
  *   0x2 = Alphanumeric
  *   0x4 = Byte
  *   0x7 = ECI
+ *   0x3 = Structured Append (skipped)
+ *   0x5 = FNC1 first position (skipped)
+ *   0x9 = FNC1 second position (skipped)
+ *   0x8 = Kanji (skipped)
  */
-function decodeBitstream(payload, byteCountBits) {
-  const alnumCountBits = byteCountBits === 16 ? 11 : 9;
-  const numericCountBits = byteCountBits === 16 ? 14 : 10;
+function decodeBitstream(payload, vg) {
+  const { byte: byteCountBits, alnum: alnumCountBits, numeric: numericCountBits } = vg;
   const totalBits = payload.length * 8;
   let bitPos = 0;
   const output = [];
@@ -110,6 +128,34 @@ function decodeBitstream(payload, byteCountBits) {
           readBits(8);
         } else if ((first & 0xE0) === 0xC0) {
           readBits(16);
+        }
+        break;
+      }
+
+      case 0x3: {
+        // Structured Append — skip 16 bits (symbol sequence + parity)
+        if (readBits(16) === null) return output.length > 0 ? Buffer.from(output) : null;
+        break;
+      }
+
+      case 0x5: {
+        // FNC1 first position — no additional data
+        break;
+      }
+
+      case 0x9: {
+        // FNC1 second position — skip 8-bit application indicator
+        if (readBits(8) === null) return output.length > 0 ? Buffer.from(output) : null;
+        break;
+      }
+
+      case 0x8: {
+        // Kanji mode — skip
+        const kanjiCountBits = byteCountBits === 8 ? 8 : (alnumCountBits >= 13 ? 12 : 10);
+        const count = readBits(kanjiCountBits);
+        if (count === null || count <= 0) return output.length > 0 ? Buffer.from(output) : null;
+        for (let i = 0; i < count; i++) {
+          if (readBits(13) === null) return output.length > 0 ? Buffer.from(output) : null;
         }
         break;
       }

@@ -25,6 +25,12 @@ npm install
 npm run dev
 ```
 
+## Lint
+```bash
+npm run lint
+npm run lint:fix
+```
+
 ## Deployment
 Render: https://midni-backend.onrender.com
 
@@ -51,108 +57,57 @@ Responses and JSON examples:
 #### 200 OK (valid)
 ```json
 {
-   "status": "ok",
-   "verified": true,
-   "dataExpiry": "06-02-2026 12:34:56",
-   "header": {
-      "signerCountry": "ES",
-      "signerEntity": "CN",
-      "certReferenceHex": "A1B2C3D4",
-      "profile": 7,
-      "documentCategory": 9
-   },
-   "data": {
-      "documentNumber": "12345678X",
-      "birthDate": "01-01-1990",
-      "givenName": "NOMBRE",
-      "surnames": "APELLIDOS",
-      "sex": "M",
-      "documentExpiry": "01-01-2030",
-      "nationality": "ESP",
-      "parents": "PADRE / MADRE",
-      "supportNumber": "ABC123456",
-      "isAdult": true,
-      "dataExpiry": "06-02-2026 12:34:56",
-      "addressFull": "CALLE EJEMPLO 1, 2B, MADRID",
-      "addressLines": ["CALLE EJEMPLO 1", "2B", "MADRID"],
-      "placeOfBirthLines": ["MADRID", "MADRID", "ESP"],
-      "thumbnailBase64": null
-   },
-   "issues": []
+   "valid": true,
+   "dni": "12345678X",
+   "nombre": "NOMBRE",
+   "apellidos": "APELLIDOS",
+   "fechaNacimiento": "01-01-1990",
+   "sexo": "M",
+   "caducidadDocumento": "01-01-2030",
+   "mayorEdad": true,
+   "rawFields": {
+      "0x40": { "name": "Document number", "value": "12345678X" },
+      "header": {
+         "signerCountry": "ES",
+         "signerEntity": "PN",
+         "certReference": "A1B2C3D4",
+         "profile": 7,
+         "documentCategory": 9
+      },
+      "dataExpiry": "07-02-2026 12:34:56"
+   }
 }
 ```
 
 #### 400 Bad Request (invalid structure)
 ```json
 {
-   "status": "invalid_structure",
-   "verified": false,
-   "reason": "Payload structure is invalid",
-   "issues": [
-      {
-         "severity": "error",
-         "message": "Invalid magic byte (0xDC expected)",
-         "offset": 0
-      }
-   ]
+   "valid": false,
+   "reason": "STRUCTURE_INVALID"
 }
 ```
 
 #### 400 Bad Request (invalid signature)
 ```json
 {
-   "status": "invalid_signature",
-   "verified": false,
-   "reason": "Signature verification failed",
-   "issues": []
+   "valid": false,
+   "reason": "SIGNATURE_INVALID"
 }
 ```
 
-#### 400 Bad Request (expired data)
+#### 400 Bad Request (expired QR)
 ```json
 {
-   "status": "expired_data",
-   "verified": false,
-   "reason": "Data has expired",
-   "dataExpiry": "01-01-2024 10:00:00",
-   "issues": []
+   "valid": false,
+   "reason": "QR_EXPIRED"
 }
 ```
 
 #### 400 Bad Request (invalid certificate)
 ```json
 {
-   "status": "invalid_certificate",
-   "verified": false,
-   "reason": "Certificate is not currently valid",
-   "issues": []
-}
-```
-
-#### 400 Bad Request (revoked certificate)
-```json
-{
-   "status": "invalid_certificate",
-   "verified": false,
-   "reason": "Certificate is revoked",
-   "ocsp": {
-      "status": "revoked",
-      "revokedAt": "2025-01-01T00:00:00.000Z"
-   },
-   "issues": []
-}
-```
-
-#### 400 Bad Request (OCSP unknown)
-```json
-{
-   "status": "ocsp_unknown",
-   "verified": false,
-   "reason": "OCSP status is unknown",
-   "ocsp": {
-      "status": "unknown"
-   },
-   "issues": []
+   "valid": false,
+   "reason": "CERT_INVALID"
 }
 ```
 
@@ -187,57 +142,30 @@ Responses and JSON examples:
 #### 500 Internal Server Error (unexpected error)
 ```json
 {
-   "error": "internal_error"
+   "valid": false,
+   "reason": "INTERNAL_ERROR"
 }
 ```
 
-#### 500 Internal Server Error (CA not configured)
-```json
-{
-   "status": "ca_not_configured",
-   "verified": false,
-   "reason": "CA certificate is required for full validation",
-   "issues": []
-}
-```
+When `valid: true`
 
-#### 502 Bad Gateway (certificate fetch failed)
-```json
-{
-   "status": "certificate_fetch_failed",
-   "verified": false,
-   "reason": "Certificate with provided reference not found",
-   "issues": []
-}
-```
+- `dni`
+- `nombre`
+- `apellidos`
+- `fechaNacimiento`
+- `sexo`
+- `caducidadDocumento`
+- `mayorEdad`
+- `rawFields` (all parsed TLV fields + header metadata)
 
-#### 502 Bad Gateway (OCSP failed)
-```json
-{
-   "status": "ocsp_failed",
-   "verified": false,
-   "reason": "Request failed",
-   "issues": []
-}
-```
+When `valid: false`, possible `reason` values:
 
-When valid, the response includes a `data` object with normalized DNIe fields (all optional):
-
-- `documentNumber`
-- `birthDate`
-- `givenName`
-- `surnames`
-- `sex`
-- `documentExpiry`
-- `thumbnailBase64` (only when `INCLUDE_THUMBNAIL_BASE64=true`)
-- `addressFull`
-- `addressLines` (array)
-- `placeOfBirthLines` (array)
-- `nationality`
-- `parents`
-- `supportNumber`
-- `isAdult`
-- `dataExpiry`
+| Reason | Description |
+|---|---|
+| `STRUCTURE_INVALID` | QR structure cannot be parsed |
+| `CERT_INVALID` | Certificate not found, expired, revoked, or OCSP failed |
+| `SIGNATURE_INVALID` | ECDSA signature verification failed |
+| `QR_EXPIRED` | Data expiry (tag 0x80) is in the past |
 
 ## CNP Certificate
 - Certificate source: http://pki.policia.es/cnp/MiDNI
@@ -245,12 +173,7 @@ When valid, the response includes a `data` object with normalized DNIe fields (a
 
 You can override `CERT_BASE_URL` and `CERT_FILE` via env vars.
 
-Certificate validation modes:
-- `basic` (default): only checks certificate validity dates.
-- `none`: skips certificate validation.
-- `full`: enables CA signature checks and OCSP.
-
-Full validation requires a CA certificate via `CA_CERT_PATH` or `CA_CERT_PEM`.
+Certificate validation requires a CA certificate via `CA_CERT_PATH` or `CA_CERT_PEM`.
 If the signing certificate uses intermediates, provide them via `INTERMEDIATE_CERTS_PATH` or `INTERMEDIATE_CERTS_PEM`.
 OCSP defaults to `http://ocsp.policia.es` but can be overridden with `OCSP_URL`.
 
