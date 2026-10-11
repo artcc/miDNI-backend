@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.2] - 2026-10-11
+
+### Changed
+- Change the project license from Apache-2.0 to MIT.
+- Align the README with the companion iOS POC, document current setup and API behavior, and remove the obsolete deployment URL.
+- Update contribution guidelines with environment loading, development requirements, focused manual checks, and logging conventions.
+
+### Security
+- Restrict application logs to timestamps, severity, and fixed event messages, excluding structured data, HTTP context, and error details.
+
 ## [0.0.1] - 2026-02-07
 
 ### Added

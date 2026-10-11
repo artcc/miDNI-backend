@@ -16,8 +16,19 @@ app.disable("x-powered-by")
 app.use(helmet())
 app.use(express.json({ limit: "1mb" }))
 
-// Structured request logging with health check excluded.
-app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/health" } }))
+// Log fixed HTTP events without request, response, or error context.
+app.use(pinoHttp({
+  logger,
+  wrapSerializers: false,
+  serializers: {
+    req: () => undefined,
+    res: () => undefined,
+    err: () => undefined,
+  },
+  autoLogging: { ignore: (req) => req.url === "/health" },
+  customSuccessMessage: () => "HTTP request completed",
+  customErrorMessage: () => "HTTP request failed",
+}))
 
 // IP-based rate limiting to reduce abuse.
 const limiter = rateLimit({

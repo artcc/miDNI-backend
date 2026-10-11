@@ -1,6 +1,7 @@
 {
   "name": "midni-backend",
   "version": "0.0.2",
+  "license": "MIT",
   "private": true,
   "type": "commonjs",
   "main": "src/server.js",
